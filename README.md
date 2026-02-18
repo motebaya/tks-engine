@@ -5,8 +5,8 @@
 <h3 align="center">TikTok Scheduler</h3>
 
 <p align="center">
-  A desktop GUI tool for bulk scheduling and uploading videos to TikTok<br/>
-  using browser automation — no API keys required.
+  A desktop GUI tool for bulk scheduling/uploading videos to TikTok<br/>
+  using browser automation, no API keys required.
 </p>
 
 <p align="center">
@@ -17,66 +17,51 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" />
 </p>
 
----
-
 ## About
 
-**TikTok Scheduler** is a desktop application that automates bulk video uploads and scheduling on TikTok. It uses Playwright to control a real Chromium browser behind the scenes, interacting with TikTok's web upload page exactly as a user would — filling in captions, setting schedule dates, and clicking upload.
+**TikTok Scheduler** is a desktop application that automates bulk video scheduling on TikTok. It uses Playwright to control a real Chromium browser behind the scenes, interacting with TikTok's web upload page exactly as a user would, filling in captions, setting future schedule dates, and submitting the upload.
 
 ### Key Features
 
-- **Bulk upload** — Scan a folder of `.mp4` files and upload them all in one batch
-- **Smart scheduling** — Auto-generate evenly spaced time slots across a configurable date range
-- **Multi-account** — Switch between accounts via cookie-based session management
-- **Folder history** — Dropdown with previously used video folders
-- **Published tracking** — Automatically tracks which videos have been published and prevents re-uploads
-- **Schedule rules** — Configurable time windows, intervals, randomization, and daily limits
-- **Headless mode** — Run browser automation in the background without a visible window
-- **Copyright check** — Detects potential copyright music issues during upload
-- **Dark neumorphic UI** — Modern, polished dark-themed interface
+- **Bulk scheduling**: Scan a folder of `.mp4` files and schedule them all in one batch
+- **Smart time slots**: Auto-generate evenly spaced schedule slots across a configurable date range
+- **Multi-account**: Switch between accounts via cookie-based session management
+- **Folder history**: Dropdown with previously used video folders
+- **Published tracking**: Automatically tracks which videos have been published and prevents re-uploads
+- **Schedule rules**: Configurable time windows, intervals, randomization, and daily limits
+- **Headless mode**: Run browser automation in the background without a visible window
+- **Copyright check**: Detects potential copyright music issues during upload
+- **Dark neumorphic UI**: Modern, polished dark-themed interface
 
----
-
-## 🔄 How It Works
+## How It Works
 
 ```mermaid
 flowchart TB
-    subgraph User["👤 User"]
-        A[Select Account] --> B[Browse Video Folder]
-        B --> C[Scan Files]
-        C --> D[Configure Schedule]
-        D --> E[Generate Time Slots]
-        E --> F[Start Upload]
-    end
+    U(["👤 User"]) --> A["Select Account"]
+    A --> B["Browse Video Folder"]
+    B --> C["Scan .mp4 Files"]
+    C --> D["Configure Date Range & Time Window"]
+    D --> E["Generate Schedule Slots"]
+    E --> F["Start Upload"]
 
-    subgraph App["🖥️ TikTok Scheduler"]
-        F --> G{For Each Video}
-        G --> H[Open TikTok Upload Page]
-        H --> I[Upload Video File]
-        I --> J[Set Caption & Hashtags]
-        J --> K{Schedule or Post Now?}
-        K -->|Schedule| L[Set Date & Time Picker]
-        K -->|Now| M[Click Post]
-        L --> M
-        M --> N[Wait for Success Toast]
-        N --> O[Log Result]
-        O --> G
-    end
+    F --> G{"For Each Video"}
+    G --> H["Open TikTok Upload Page"]
+    H --> I["Upload Video File"]
+    I --> J["Set Caption & Hashtags"]
+    J --> L["Set Schedule Date & Time"]
+    L --> M["Click Schedule Button"]
+    M --> N["Wait for Success Toast"]
+    N --> O["Log Result"]
+    O -->|"Next Video"| G
 
-    subgraph Storage["💾 Storage"]
-        O --> P[Save to schedules/@user.json]
-        P --> Q[Migrate to publishes/@user.json]
-    end
+    O --> P["Save to schedules/@user.json"]
+    P --> Q["Migrate to publishes/@user.json"]
 
-    subgraph Browser["🌐 Playwright Chromium"]
-        H -.->|Headless or Visible| R[Chromium Instance]
-        R -.->|DOM Automation| S[TikTok Web Creator]
-    end
+    H -.->|"Headless or Visible"| R["Chromium Instance"]
+    R -.->|"DOM Automation"| S["TikTok Web Creator"]
 ```
 
----
-
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 
@@ -107,11 +92,9 @@ python -m playwright install chromium
 > [!TIP]
 > You can skip Steps 2-3 entirely by using **RUN.bat** — it automatically checks and installs everything for you.
 
----
+## Running the App
 
-## ▶️ Running the App
-
-### Option A — Double-click `RUN.bat`
+### Option A: Double-click `RUN.bat`
 
 The easiest way. Just double-click `RUN.bat` in the project root. It will:
 
@@ -120,15 +103,13 @@ The easiest way. Just double-click `RUN.bat` in the project root. It will:
 3. ✅ Install Playwright Chromium if not found
 4. ✅ Launch the application
 
-### Option B — Terminal
+### Option B: Terminal
 
 ```bash
 python main.py
 ```
 
----
-
-## 🍪 Adding an Account
+## Adding an Account
 
 TikTok Scheduler uses **cookie-based authentication** (no username/password needed):
 
@@ -140,9 +121,7 @@ TikTok Scheduler uses **cookie-based authentication** (no username/password need
 
 An example cookie format is provided in `example_cookie.json`.
 
----
-
-## ⚙️ Configuration
+## Configuration
 
 Edit `config.json` to customize behavior:
 
@@ -193,6 +172,6 @@ tiktok-scheduler/
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
