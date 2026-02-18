@@ -40,8 +40,8 @@ class UploadResult:
   message: str
   timestamp: datetime
   error: str | None = None
-  copyright_music: bool = False
-  quality_content: str = ""
+  cm: bool = False
+  qc: str = ""
 
   def to_dict(self) -> dict:
     """
@@ -56,8 +56,8 @@ class UploadResult:
       "status": "success" if self.success else "failed",
       "timestamp": DateTimeUtils.format_iso(self.timestamp),
       "error": self.error,
-      "copyright_music": self.copyright_music,
-      "quality_content": self.quality_content,
+      "cm": self.cm,
+      "qc": self.qc,
     }
 
 
@@ -180,8 +180,8 @@ class Uploader:
           message="Music copyright detected — upload aborted",
           timestamp=datetime.now(),
           error=copyright_msg,
-          copyright_music=True,
-          quality_content=quality_msg,
+          cm=True,
+          qc=quality_msg,
         )
 
       # Step 6: Click post
@@ -214,8 +214,8 @@ class Uploader:
         file_path=task.file_path,
         message=f"Upload successful{schedule_info}",
         timestamp=datetime.now(),
-        copyright_music=False,
-        quality_content=quality_msg,
+        cm=False,
+        qc=quality_msg,
       )
 
     except RateLimitError:
