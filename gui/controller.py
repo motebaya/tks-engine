@@ -126,7 +126,7 @@ class UploadWorker(QThread):
 
       for i, task in enumerate(self._tasks):
         self._logger.info(
-          f"Processing: {i} of {len(self._tasks)}"
+          f"Processing: {i+1} of {len(self._tasks)}"
         )
         if self._stop_flag:
           self._logger.info("Upload stopped by user")
@@ -930,7 +930,7 @@ class GUIController:
 
           # Mark this entry for migration to publishes
           for upload in data_uploads:
-            if upload.get("file") == video.filename and upload.get("status") == "success" and not schedule_status["passed"]:
+            if upload.get("file") == video.filename and upload.get("status") == "success" and schedule_status["passed"]:
               to_publish.append(upload)
               break
 
