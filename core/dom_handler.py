@@ -745,7 +745,7 @@ class DOMHandler:
         self._logger.debug(
           "Checking warning modal..."
         )
-        is_modal = self._page.evaluate(_JS_GET_MODAL_WARNING)
+        is_modal = await self._page.evaluate(_JS_GET_MODAL_WARNING)
         if is_modal:
           self._logger.info(
             "Found and success closed warning modal.."
