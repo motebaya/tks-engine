@@ -125,6 +125,9 @@ class UploadWorker(QThread):
       await browser_manager.launch(self._username)
 
       for i, task in enumerate(self._tasks):
+        self._logger.info(
+          f"Processing: {i} of {len(self._tasks)}"
+        )
         if self._stop_flag:
           self._logger.info("Upload stopped by user")
           break
@@ -191,6 +194,8 @@ class UploadWorker(QThread):
         if i < total - 1 and not self._stop_flag:
           await browser_manager.new_upload_page()
           await asyncio.sleep(3)
+        
+        print("-" * 20)
 
     except RateLimitError as e:
       self._stop_flag = True
@@ -735,7 +740,7 @@ class GUIController:
   def _on_limit_changed(self, value: int) -> None:
     """Sync table checkboxes, clear stale schedule times, and update label.
 
-    Skips rows that are already flagged as 'Scheduled' in column 4.
+    Skips rows that are already flagged as 'Scheduled' or 'Published' in column 4.
     """
     table = self._window.video_table
     checked = 0
@@ -745,9 +750,9 @@ class GUIController:
       if item is None:
         continue
 
-      # Skip already-scheduled rows (col 4)
+      # Skip already-scheduled or published rows (col 4)
       status_item = table.item(row, 4)
-      if status_item and status_item.text() == "Scheduled":
+      if status_item and status_item.text() in ("Scheduled", "Published"):
         continue
 
       if available_idx < value:
@@ -917,13 +922,15 @@ class GUIController:
       status_text = ""
       if is_published:
         status_text = "Published"
-      elif is_scheduled:
+
+      if is_scheduled:
         status_text = "Scheduled"
         if schedule_status and schedule_status['passed'] is True:
           status_text = "Published"
+
           # Mark this entry for migration to publishes
           for upload in data_uploads:
-            if upload.get("file") == video.filename and upload.get("status") == "success":
+            if upload.get("file") == video.filename and upload.get("status") == "success" and not schedule_status["passed"]:
               to_publish.append(upload)
               break
 
@@ -1093,9 +1100,9 @@ class GUIController:
     selected: list[VideoFile] = []
     table = self._window.video_table
     for row in range(table.rowCount()):
-      # Skip already-scheduled rows
+      # Skip already-scheduled or published rows
       status_item = table.item(row, 4)
-      if status_item and status_item.text() == "Scheduled":
+      if status_item and status_item.text() in ("Scheduled", "Published"):
         continue
 
       item = table.item(row, 0)
@@ -1507,9 +1514,9 @@ class GUIController:
         if task.schedule_time else None
       ),
       "status": "success" if result.success else "failed",
-      "timestamp": int(result.timestamp.timestamp()),
+      "timestamp": int(task.schedule_time.timestamp()),
       "video_id": None,
-      "copyright_music": result.copyright_music,
-      "quality_content": result.quality_content,
+      "cm": result.cm,
+      "qc": result.qc,
     }
     data["uploads"].append(record)
