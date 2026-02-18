@@ -575,6 +575,7 @@ class DOMHandler:
     await self._dismiss_content_check_modal()
     await self._dismiss_joyride_overlay()
     await self._dismiss_split_window()
+    await self._dismiss_allow_autochecking()
 
   async def _dismiss_cookie_banner(self) -> None:
     """Dismiss the cookie consent banner if present."""
@@ -647,6 +648,68 @@ class DOMHandler:
       pass
     except Exception as e:
       self._logger.debug(f"Error dismissing content check modal: {e}")
+
+  async def _dismiss_allow_autochecking(self) -> None:
+    """Dismiss the 'Turn on automatic content checking' modal for fresh accounts.
+
+    This modal appears immediately when the upload page loads for a
+    fresh TikTok account that has never uploaded via desktop before.
+    Clicks the 'Turn on' button inside the common-modal-footer.
+    """
+    try:
+      clicked = await self._page.evaluate("""
+        () => {
+          const modalFooter = document.querySelector('div[class*="common-modal-footer"]');
+          if (modalFooter) {
+            const turnOnBtn = Array.from(modalFooter.querySelectorAll("button")).filter(
+              (i) => i.textContent.toLowerCase() === "turn on"
+            )[0];
+            if (turnOnBtn) {
+              turnOnBtn.click();
+              return true;
+            }
+          }
+          return false;
+        }
+      """)
+      if clicked:
+        self._logger.debug("Auto content checking modal dismissed (Turn on)")
+        await asyncio.sleep(0.5)
+    except Exception as e:
+      self._logger.debug(f"Error dismissing auto content checking modal: {e}")
+
+  async def dismiss_allow_schedule(self) -> None:
+    """Dismiss the 'Allow scheduling' modal for fresh accounts.
+
+    This modal appears when ``enable_schedule()`` is called for a
+    fresh TikTok account that has never scheduled a video before.
+    It is NOT called from ``dismiss_all_popups`` — instead it must
+    be called explicitly right after ``enable_schedule()`` in the
+    upload pipeline.
+
+    Clicks the 'Allow' button inside the common-modal-footer.
+    """
+    try:
+      clicked = await self._page.evaluate("""
+        () => {
+          const scheduleModal = document.querySelector('div[class*="common-modal-footer"]');
+          if (scheduleModal) {
+            const allowBtn = Array.from(scheduleModal.querySelectorAll("button")).filter(
+              (i) => i.textContent.toLowerCase() === "allow"
+            )[0];
+            if (allowBtn) {
+              allowBtn.click();
+              return true;
+            }
+          }
+          return false;
+        }
+      """)
+      if clicked:
+        self._logger.debug("Allow scheduling modal dismissed")
+        await asyncio.sleep(0.5)
+    except Exception as e:
+      self._logger.debug(f"Error dismissing allow schedule modal: {e}")
 
   async def handle_copyright_modal(self) -> None:
     """
