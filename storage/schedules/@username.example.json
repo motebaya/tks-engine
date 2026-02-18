@@ -1,0 +1,14 @@
+{
+  "uploads": [
+    {
+      "file": "<basename>",
+      "caption": "<caption>",
+      "schedule_time": "<dateISOString>",
+      "status": "success|failed",
+      "timestamp": 123,
+      "video_id": null,
+      "copyright_music": false,
+      "quality_content": "<quality_content_message>"
+    }
+  ]
+}

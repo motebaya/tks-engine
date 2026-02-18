@@ -1,0 +1,28 @@
+[
+  {
+    "domain": ".tiktok.com",
+    "expirationDate": 1800224045.756937,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "ttwid",
+    "path": "/",
+    "sameSite": "no_restriction",
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "123456789"
+  },
+  {
+    "domain": ".tiktok.com",
+    "expirationDate": 1783580666.560516,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "uid_tt",
+    "path": "/",
+    "sameSite": null,
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "1234566789"
+  }
+]
