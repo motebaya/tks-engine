@@ -673,7 +673,7 @@ class DOMHandler:
         }
       """)
       if clicked:
-        self._logger.debug("Auto content checking modal dismissed (Turn on)")
+        self._logger.debug("Auto content checking modal dismissed (Turn on) ")
         await asyncio.sleep(0.5)
     except Exception as e:
       self._logger.debug(f"Error dismissing auto content checking modal: {e}")
