@@ -144,6 +144,7 @@ class Uploader:
       # Step 4: Schedule (if specified)
       if task.schedule_time is not None:
         await self._dom_handler.enable_schedule()
+        await self._dom_handler.dismiss_allow_schedule()
 
         hour, minute = DateTimeUtils.parse_hour_minute(task.schedule_time)
         await self._dom_handler.set_time(hour, minute)
