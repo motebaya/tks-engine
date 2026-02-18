@@ -1,0 +1,18 @@
+{
+  "windowSize": { "width": 1200, "height": 860 },
+  "minWindowSize": { "width": 900, "height": 620 },
+  "theme": "neumorphism_dark",
+  "primaryColor": "#1E66FF",
+  "logLevel": "DEBUG",
+  "enableVerbose": true,
+  "headlessDefault": true,
+  "scheduleRules": {
+    "minOffsetMinutes": 15,
+    "maxOffsetMonths": 1,
+    "minuteStep": 5
+  },
+  "paths": {
+    "storageDir": "storage",
+    "cookiesDir": "cookies"
+  }
+}
