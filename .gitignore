@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Project runtime data
+storage/**
+!storage/**/
+!storage/**/*.example.json
+
+
+cookies/*-cookie.json
+*.log
+
+# Test / scratch files
+error.txt
+prompt.txt
+sample.mp4
+cli_test.py
+mangki.js
+
+# PyInstaller
+*.spec
+
+# Gemini agent
+.gemini/
+.agent/
+
+trash/*
+
+git_command*
