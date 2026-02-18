@@ -64,6 +64,9 @@ class _Selectors:
   )
   COPYRIGHT_MODAL = ".TUXModal.common-modal-confirm-modal"
   COPYRIGHT_POST_NOW = "button.TUXButton--primary"
+  
+  # warning modal
+  # WARNING_MODAL = 'div[class*="common-modal-close-icon"]'
 
 
 class DOMHandler:
@@ -456,17 +459,6 @@ class DOMHandler:
       }
     """
 
-    _JS_GET_MODAL_WARNING = """
-      () => {
-        const modal_warning = document.querySelector('div[class*="common-modal-close-icon"]')
-        if (modal_warning) {
-          modal_warning.click()
-          return true
-        }
-        return false
-      }
-    """
-
     status_map = {
       "status-ready": {
         "state": "ready",
@@ -513,6 +505,7 @@ class DOMHandler:
     pending_states = {"status-ready", "status-checking"}
     elapsed = 0
 
+    status_key = ""
     while elapsed < self.CONTENT_CHECK_TIMEOUT:
       try:
         status_key = await self._page.evaluate(_JS_GET_STATUS)
@@ -538,22 +531,13 @@ class DOMHandler:
           f"Content quality check: {info['state']} — {info['message']}"
         )
 
-        # need wait few seconds to check modal warning appeared or nah
-        if status_key == "status-warn": 
-          self._logger.info("Waiting for modal warning appeared/not...")
-          await asyncio.sleep(3)
-          modal = await self._page.evaluate(_JS_GET_MODAL_WARNING)
-          if modal:
-            self._logger.info("Modal warning appeared, and success closed...")
-          else:
-            self._logger.warning("Modal warning not appeared, continue...")
         return info
 
       # Still checking — keep polling
       self._logger.debug(f"Content check state: {status_key}")
       await asyncio.sleep(self.CONTENT_CHECK_POLL_INTERVAL)
       elapsed += self.CONTENT_CHECK_POLL_INTERVAL
-
+    
     self._logger.warning("Content quality check timed out")
     return {"state": "timeout", "message": "Content check timed out"}
 
@@ -743,6 +727,36 @@ class DOMHandler:
         if await post_btn.count() == 0 or not await post_btn.is_visible():
           self._logger.success("Post submitted successfully (button hidden)")
           return True
+      except Exception:
+        pass
+      
+      # Check 4: modal warning check & re-submit the button, no need re-confirmation
+      try:
+        _JS_GET_MODAL_WARNING = """
+          () => {
+            const modal_warning = document.querySelector('div[class*="common-modal-close-icon"]')
+            if (modal_warning) {
+              modal_warning.click()
+              return true
+            }
+            return false
+          }
+        """
+        self._logger.debug(
+          "Checking warning modal..."
+        )
+        is_modal = self._page.evaluate(_JS_GET_MODAL_WARNING)
+        if is_modal:
+          self._logger.info(
+            "Found and success closed warning modal.."
+          )
+          self._logger.debug("RE-Submit the button")
+          await self.click_post()
+          return True
+        else:
+          self._logger.info(
+            "No warning modal found!"
+          )
       except Exception:
         pass
 
