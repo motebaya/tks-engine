@@ -6,7 +6,7 @@
 
 <p align="center">
   A desktop GUI tool for bulk scheduling/uploading videos to TikTok<br/>
-  using browser automation, no API keys required.
+  Via chromium based browser automation
 </p>
 
 <p align="center">
