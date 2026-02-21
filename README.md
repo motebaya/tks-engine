@@ -33,34 +33,6 @@
 - **Copyright check**: Detects potential copyright music issues during upload
 - **Dark neumorphic UI**: Modern, polished dark-themed interface
 
-## How It Works
-
-```mermaid
-flowchart TB
-    U(["👤 User"]) --> A["Select Account"]
-    A --> B["Browse Video Folder"]
-    B --> C["Scan .mp4 Files"]
-    C --> D["Configure Date Range & Time Window"]
-    D --> E["Generate Schedule Slots"]
-    E --> F["Start Upload"]
-
-    F --> G{"For Each Video"}
-    G --> H["Open TikTok Upload Page"]
-    H --> I["Upload Video File"]
-    I --> J["Set Caption & Hashtags"]
-    J --> L["Set Schedule Date & Time"]
-    L --> M["Click Schedule Button"]
-    M --> N["Wait for Success Toast"]
-    N --> O["Log Result"]
-    O -->|"Next Video"| G
-
-    O --> P["Save to schedules/@user.json"]
-    P --> Q["Migrate to publishes/@user.json"]
-
-    H -.->|"Headless or Visible"| R["Chromium Instance"]
-    R -.->|"DOM Automation"| S["TikTok Web Creator"]
-```
-
 ## Installation
 
 ### Prerequisites
@@ -93,6 +65,8 @@ python -m playwright install chromium
 > You can skip Steps 2-3 entirely by using **RUN.bat** — it automatically checks and installs everything for you.
 
 ## Running the App
+
+<img width="480" height="256" alt="Screenshot 2026-02-21 205444" src="https://github.com/user-attachments/assets/8cb724cc-486f-4e1c-8fc3-55b78f0eda2d" />
 
 ### Option A: Double-click `RUN.bat`
 
