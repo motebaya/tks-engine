@@ -300,7 +300,8 @@ class WidgetFactory:
     combo = QComboBox()
     combo.setMaxVisibleItems(12)
     combo.addItems([f"{h:02d}" for h in range(24)])
-    combo.setMinimumWidth(62)
+    combo.setStyleSheet("QComboBox { padding: 6px 4px; }")
+    combo.setFixedWidth(60)
     return combo
 
   @staticmethod
@@ -316,7 +317,8 @@ class WidgetFactory:
     combo = QComboBox()
     combo.setMaxVisibleItems(12)
     combo.addItems([f"{m:02d}" for m in range(0, 60, step)])
-    combo.setMinimumWidth(62)
+    combo.setStyleSheet("QComboBox { padding: 6px 4px; }")
+    combo.setFixedWidth(60)
     return combo
 
   @staticmethod
@@ -347,6 +349,34 @@ class WidgetFactory:
     line = QLineEdit()
     line.setPlaceholderText(placeholder)
     return line
+
+  @staticmethod
+  def create_text_area(
+    placeholder: str = "", min_height: int = 60,
+  ) -> QTextEdit:
+    """
+    Create an editable multi-line text area with word wrapping.
+
+    Text wraps at the widget boundary and scrolls vertically
+    when content exceeds the visible area.
+
+    :param placeholder: Placeholder text.
+    :type placeholder: str
+    :param min_height: Fixed height in pixels.
+    :type min_height: int
+    :return: Configured QTextEdit.
+    :rtype: QTextEdit
+    """
+    te = QTextEdit()
+    te.setPlaceholderText(placeholder)
+    te.setFixedHeight(min_height)
+    te.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+    te.setTabChangesFocus(True)
+    te.setAcceptRichText(False)
+    te.setStyleSheet(
+      "font-family: 'Segoe UI', 'Arial', sans-serif; font-size: 13px;"
+    )
+    return te
 
   @staticmethod
   def create_spin_input(
@@ -391,6 +421,7 @@ class WidgetFactory:
     date_edit.setCalendarPopup(True)
     date_edit.setDisplayFormat("yyyy-MM-dd")
     date_edit.setDate(default_date or QDate.currentDate())
+    date_edit.setFixedWidth(120)
     return date_edit
 
   @staticmethod
@@ -507,7 +538,7 @@ class WidgetFactory:
     """
     Create a styled video table with 5 columns.
 
-    Columns: Select, Filename, Size, Schedule Time, Status.
+    Columns: Select, Filename, Size, Date Time, Status.
 
     :return: Configured QTableWidget.
     :rtype: QTableWidget
@@ -515,11 +546,12 @@ class WidgetFactory:
     table = QTableWidget()
     table.setColumnCount(5)
     table.setHorizontalHeaderLabels([
-      "Select", "Filename", "Size", "Schedule Time", "Status",
+      "Select", "Filename", "Size", "Date Time", "Status",
     ])
     table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     table.setAlternatingRowColors(False)
     table.horizontalHeader().setStretchLastSection(True)
+    table.setSortingEnabled(False)
     table.setColumnWidth(0, 50)
     table.setColumnWidth(1, 250)
     table.setColumnWidth(2, 80)
