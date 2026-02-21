@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QTableWidgetItem
+from PyQt6.QtWidgets import (
+  QFileDialog, QHBoxLayout, QLabel, QTableWidgetItem, QWidget,
+)
 
 from core.browser_manager import BrowserManager
 from core.config_manager import ConfigManager
@@ -289,6 +291,14 @@ class GUIController:
     self._tasks: list[UploadTask] = []
     self._worker: UploadWorker | None = None
 
+    # Cached data for filter/sort refresh
+    self._cached_data_uploads: list[dict] = []
+    self._cached_username: str = ""
+    self._sort_column: int | None = None
+    self._sort_ascending: bool = True
+    # Row index → VideoFile mapping (accounts for sorting/filtering)
+    self._row_video_map: dict[int, VideoFile] = {}
+
     # Apply headless default from config
     self._window.headless_check.setChecked(config.headless_default)
 
@@ -363,8 +373,21 @@ class GUIController:
     w.limit_spin.valueChanged.connect(self._on_limit_changed)
 
     # Live caption preview update
-    w.caption_input.textChanged.connect(lambda _: self._update_caption_preview())
-    w.hashtags_input.textChanged.connect(lambda _: self._update_caption_preview())
+    w.caption_input.textChanged.connect(self._update_caption_preview)
+    w.hashtags_input.textChanged.connect(self._update_caption_preview)
+
+    # Table filter checkboxes
+    w.filter_scheduled_check.stateChanged.connect(
+      lambda _: self._on_filter_changed()
+    )
+    w.filter_published_check.stateChanged.connect(
+      lambda _: self._on_filter_changed()
+    )
+
+    # Column header click for sorting
+    w.video_table.horizontalHeader().sectionClicked.connect(
+      self._on_header_clicked
+    )
 
   # ================================================================
   # DATE RANGE VALIDATION (live, on-change)
@@ -405,18 +428,26 @@ class GUIController:
 
   def _update_time_options(self) -> None:
     """
-    Regenerate hour options for the start time dropdown based on the
-    selected start date.  Filters out invalid past hours if the date
-    is today.
+    Regenerate hour options for the start-time dropdown based on the
+    selected start date.
+
+    If the date is today, only hours >= the current hour are shown.
+    For future dates the full 00-23 range is available.
     """
     w = self._window
     qdate = w.start_date.date()
-    selected_date = datetime(qdate.year(), qdate.month(), qdate.day())
+    now = datetime.now()
 
     # Save current selection
     current_hour = w.time_start_hour.currentText()
 
-    hours = self._rules.filtered_hours_for_date(selected_date)
+    if qdate.toPyDate() == now.date():
+      hours = [f"{h:02d}" for h in range(now.hour, 24)]
+    elif qdate.toPyDate() < now.date():
+      hours = []
+    else:
+      hours = [f"{h:02d}" for h in range(24)]
+
     w.time_start_hour.blockSignals(True)
     w.time_start_hour.clear()
     w.time_start_hour.addItems(hours)
@@ -433,13 +464,16 @@ class GUIController:
 
   def _update_start_minutes(self) -> None:
     """
-    Regenerate minute options for the start time dropdown based on the
-    selected date and hour.  Filters out invalid past minutes if the
-    date+hour is the current hour.
+    Regenerate minute options for the start-time dropdown based on the
+    selected date and hour.
+
+    If the date is today AND the selected hour equals the current hour,
+    only minutes >= the current minute (rounded up to the next 5-min
+    step) are shown.  Otherwise the full 00-55 range is available.
     """
     w = self._window
     qdate = w.start_date.date()
-    selected_date = datetime(qdate.year(), qdate.month(), qdate.day())
+    now = datetime.now()
 
     hour_text = w.time_start_hour.currentText()
     if not hour_text:
@@ -448,9 +482,24 @@ class GUIController:
 
     current_minute = w.time_start_minute.currentText()
 
-    minutes = self._rules.filtered_minutes_for_hour(
-      selected_date, selected_hour
-    )
+    step = 5
+    all_minutes = [f"{m:02d}" for m in range(0, 60, step)]
+
+    if qdate.toPyDate() == now.date() and selected_hour == now.hour:
+      # Round current minute up to next 5-min step
+      cur_m = now.minute
+      remainder = cur_m % step
+      if remainder != 0:
+        cur_m += step - remainder
+      if cur_m >= 60:
+        # All minutes in this hour are past; list will be empty
+        # (caller should bump to next hour via _update_time_options)
+        minutes = []
+      else:
+        minutes = [f"{m:02d}" for m in range(cur_m, 60, step)]
+    else:
+      minutes = all_minutes
+
     w.time_start_minute.blockSignals(True)
     w.time_start_minute.clear()
     w.time_start_minute.addItems(minutes)
@@ -467,35 +516,53 @@ class GUIController:
 
   def _initialize_time_defaults(self) -> None:
     """
-    Set start time defaults to ``now + 15 minutes`` (rounded up to
-    the next minute step) and filter the dropdowns accordingly.
+    Set start-time defaults to now + 15 minutes, rounded up to the
+    next 5-minute increment, then filter the dropdowns.
+
+    For example, if the current time is 12:35, the default becomes
+    12:50 (35+15=50).  If it is 12:48, it becomes 13:05 (48+15=63,
+    rounded up to next 5-min → 13:05).
 
     Called once during init to ensure the initial state reflects the
     current time rather than stale hardcoded values.
     """
     w = self._window
     now = datetime.now()
-    min_dt = self._rules.min_allowed_datetime(now)
 
-    # Filter hour/minute dropdowns for today first
+    # Add 15 minutes, then round UP to the next 5-minute step
+    step = 5
+    total_minutes = now.hour * 60 + now.minute + 15
+    remainder = total_minutes % step
+    if remainder != 0:
+      total_minutes += step - remainder
+    cur_h = (total_minutes // 60) % 24
+    cur_m = total_minutes % 60
+
+    # Filter hour dropdown (removes past hours for today)
     self._update_time_options()
 
-    # Set hour to the min_allowed hour
-    hour_str = f"{min_dt.hour:02d}"
+    # Select the rounded hour
+    w.time_start_hour.blockSignals(True)
+    hour_str = f"{cur_h:02d}"
     idx = w.time_start_hour.findText(hour_str)
     if idx >= 0:
       w.time_start_hour.setCurrentIndex(idx)
     elif w.time_start_hour.count() > 0:
       w.time_start_hour.setCurrentIndex(0)
+    w.time_start_hour.blockSignals(False)
 
-    # Update minutes for that hour, then select the min_allowed minute
+    # Filter minute dropdown (removes past minutes for current hour)
     self._update_start_minutes()
-    minute_str = f"{min_dt.minute:02d}"
+
+    # Select the rounded minute
+    w.time_start_minute.blockSignals(True)
+    minute_str = f"{cur_m:02d}"
     idx = w.time_start_minute.findText(minute_str)
     if idx >= 0:
       w.time_start_minute.setCurrentIndex(idx)
     elif w.time_start_minute.count() > 0:
       w.time_start_minute.setCurrentIndex(0)
+    w.time_start_minute.blockSignals(False)
 
   def _validate_time_selection(self) -> None:
     """
@@ -722,8 +789,8 @@ class GUIController:
     else:
       video_id = "<videoid>"
 
-    user_caption = w.caption_input.text().strip()
-    hashtags_raw = w.hashtags_input.text().strip()
+    user_caption = w.caption_input.toPlainText().strip()
+    hashtags_raw = w.hashtags_input.toPlainText().strip()
 
     parts = [f"Cre: {video_id}"]
     if user_caption:
@@ -740,7 +807,7 @@ class GUIController:
   def _on_limit_changed(self, value: int) -> None:
     """Sync table checkboxes, clear stale schedule times, and update label.
 
-    Skips rows that are already flagged as 'Scheduled' or 'Published' in column 4.
+    Skips rows whose status is 'Scheduled', 'Published', or 'Failed'.
     """
     table = self._window.video_table
     checked = 0
@@ -750,9 +817,11 @@ class GUIController:
       if item is None:
         continue
 
-      # Skip already-scheduled or published rows (col 4)
+      # Skip unavailable rows (col 4 hidden item stores status text)
       status_item = table.item(row, 4)
-      if status_item and status_item.text() in ("Scheduled", "Published"):
+      if status_item and status_item.text() in (
+        "Scheduled", "Published", "Failed",
+      ):
         continue
 
       if available_idx < value:
@@ -797,20 +866,41 @@ class GUIController:
     # Build set of already-scheduled basenames
     self._scheduled_basenames: set[str] = set()
     self._published_video_ids: set[str] = set()
+    self._published_entries: dict[str, str] = {}   # video_id -> iso_date
     username = self._window.account_dropdown.currentText()
-    existing = []
+    existing: list[dict] = []
     if username:
       scheduled_data = self._load_scheduled(username)
       existing = self._get_user_uploads(scheduled_data)
       from utils.file_scanner import FileScanner
       self._scheduled_basenames = FileScanner.get_scheduled_basenames(existing)
 
-      # Build set of published video IDs
+      # 3.1 FIX: migrate past-due entries BEFORE populating table
+      to_publish: list[dict] = []
+      for upload in existing:
+        if upload.get("status") == "success":
+          ts = upload.get("timestamp")
+          if ts and datetime.fromtimestamp(ts) < datetime.now():
+            to_publish.append(upload)
+      if to_publish:
+        self._migrate_to_published(username, to_publish)
+        # Rebuild sets after migration
+        scheduled_data = self._load_scheduled(username)
+        existing = self._get_user_uploads(scheduled_data)
+        self._scheduled_basenames = FileScanner.get_scheduled_basenames(
+          existing
+        )
+
+      # Build published entries dict (video_id -> iso_date)
       pub_data = self._load_published(username)
       for entry in pub_data.get("published", []):
-        video_id = entry.split("|")[0] if "|" in entry else entry
+        if "|" in entry:
+          video_id, date_str = entry.split("|", 1)
+        else:
+          video_id, date_str = entry, ""
         if video_id:
           self._published_video_ids.add(video_id)
+          self._published_entries[video_id] = date_str
 
     def _is_unavailable(filename: str) -> bool:
       """Check if a file is scheduled or already published."""
@@ -840,61 +930,128 @@ class GUIController:
 
     self._populate_video_table(existing, username)
     self._update_caption_preview()
-  
-  def lookup_scheduled(self, filename: str, uploads: list) -> None:
-    """
-    look scheduled date based basename file
-    """
+
+  def lookup_scheduled(self, filename: str, uploads: list) -> dict | None:
+    """Look up scheduled date based on basename file."""
     for upload in uploads:
       if upload.get("file") == filename and upload.get("status") == "success":
-        return {
-          "date": datetime.fromtimestamp(upload['timestamp']).strftime("%d %B %Y %H:%M%p"),
-          "passed": datetime.fromtimestamp(upload['timestamp']) < datetime.now()
-        }
-    return
+        ts = upload.get("timestamp")
+        if ts:
+          return {
+            "date": datetime.fromtimestamp(ts).strftime("%d %B %Y %H:%M%p"),
+            "passed": datetime.fromtimestamp(ts) < datetime.now(),
+            "timestamp": ts,
+          }
+    return None
 
   def _populate_video_table(
     self, data_uploads: list[dict] | None = None, username: str = "",
   ) -> None:
-    """Fill the video table with scanned data, flagging scheduled videos.
+    """Fill the video table with filtered, sorted data.
 
-    When a scheduled entry's time has passed, it is migrated from
-    ``storage/schedules/`` to ``storage/publishes/`` automatically.
+    Supports filter checkboxes for scheduled/published visibility,
+    column sorting, centered content, and coloured status badges.
     """
     if data_uploads is None:
       data_uploads = []
+    # Cache for filter/sort refresh
+    self._cached_data_uploads = data_uploads
+    self._cached_username = username
+    self._refresh_video_table()
+
+  # ----------------------------------------------------------------
+  # TABLE FILTER / SORT / BADGE HELPERS
+  # ----------------------------------------------------------------
+
+  def _refresh_video_table(self) -> None:
+    """Rebuild the table from cached data applying filters and sort."""
+    data_uploads = self._cached_data_uploads
     table = self._window.video_table
-    table.setRowCount(len(self._videos))
-    limit = self._window.limit_spin.value()
+    w = self._window
+    limit = w.limit_spin.value()
+
+    show_scheduled = w.filter_scheduled_check.isChecked()
+    show_published = w.filter_published_check.isChecked()
 
     scheduled_names = getattr(self, "_scheduled_basenames", set())
-    available_idx = 0  # tracks position among non-scheduled rows
+    published_entries: dict[str, str] = getattr(
+      self, "_published_entries", {}
+    )
 
-    # Collect entries to migrate from schedules → publishes
-    to_publish: list[dict] = []
-
-    for row, video in enumerate(self._videos):
+    # Build row data: (video, status, dt_display, sort_ts, size_bytes)
+    rows: list[tuple] = []
+    for video in self._videos:
       is_scheduled = video.filename in scheduled_names
-      # Check if file was already published (via published video IDs)
+
+      # Check published (only if not scheduled)
       is_published = False
-      published_ids = getattr(self, "_published_video_ids", set())
-      if not is_scheduled and published_ids:
+      pub_date_iso = ""
+      if not is_scheduled:
         stem = Path(video.filename).stem
-        for vid in published_ids:
+        for vid, dstr in published_entries.items():
           if stem.startswith(vid):
             is_published = True
+            pub_date_iso = dstr
             break
 
-      is_unavailable = is_scheduled or is_published
-      schedule_status = None
+      # Determine status and display datetime
       if is_scheduled:
-        schedule_status = self.lookup_scheduled(video.filename, data_uploads)
+        sched = self.lookup_scheduled(video.filename, data_uploads)
+        dt_str = sched["date"] if sched else ""
+        sort_ts = sched.get("timestamp", 0) if sched else 0
+        status = "Scheduled"
+      elif is_published:
+        status = "Published"
+        sort_ts = 0.0
+        if pub_date_iso:
+          try:
+            dt_obj = datetime.fromisoformat(pub_date_iso)
+            dt_str = dt_obj.strftime("%d %B %Y %H:%M%p")
+            sort_ts = dt_obj.timestamp()
+          except (ValueError, OSError):
+            dt_str = pub_date_iso
+        else:
+          dt_str = ""
+      else:
+        status = "Ready"
+        dt_str = ""
+        sort_ts = 0.0
 
-      # Column 0: checkbox
+      # Apply visibility filters
+      if status == "Scheduled" and not show_scheduled:
+        continue
+      if status == "Published" and not show_published:
+        continue
+
+      rows.append((video, status, dt_str, sort_ts, video.size_bytes))
+
+    # Apply column sorting
+    if self._sort_column is not None:
+      if self._sort_column == 1:        # Filename
+        rows.sort(
+          key=lambda r: r[0].filename.lower(),
+          reverse=not self._sort_ascending,
+        )
+      elif self._sort_column == 2:      # Size
+        rows.sort(key=lambda r: r[4], reverse=not self._sort_ascending)
+      elif self._sort_column == 3:      # Date Time
+        rows.sort(key=lambda r: r[3], reverse=not self._sort_ascending)
+
+    # ---- populate table rows ----
+    table.setRowCount(len(rows))
+    self._row_video_map.clear()
+    available_idx = 0
+
+    for row_idx, (video, status, dt_str, _ts, _sz) in enumerate(rows):
+      self._row_video_map[row_idx] = video
+      is_unavailable = status in ("Scheduled", "Published")
+
+      # Col 0: checkbox
       check_item = QTableWidgetItem()
+      check_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
       if is_unavailable:
         check_item.setCheckState(Qt.CheckState.Unchecked)
-        check_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # no checkable
+        check_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
       else:
         if available_idx < limit:
           check_item.setCheckState(Qt.CheckState.Checked)
@@ -904,46 +1061,91 @@ class GUIController:
           Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
         )
         available_idx += 1
-      table.setItem(row, 0, check_item)
+      table.setItem(row_idx, 0, check_item)
 
-      # Columns 1-3: read-only data
-      for col, text in ((1, video.filename), (2, video.size_human), (3, "")):
-        item = QTableWidgetItem(text)
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        table.setItem(row, col, item)
+      # Col 1: Filename
+      fn_item = QTableWidgetItem(video.filename)
+      fn_item.setFlags(fn_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+      fn_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+      table.setItem(row_idx, 1, fn_item)
 
-      #Column 3: scheduled time
-      if is_scheduled and schedule_status:
-        scheduled_time_item = QTableWidgetItem(schedule_status['date'])
-        scheduled_time_item.setFlags(scheduled_time_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        table.setItem(row, 3, scheduled_time_item)
+      # Col 2: Size
+      size_item = QTableWidgetItem(video.size_human)
+      size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+      size_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+      table.setItem(row_idx, 2, size_item)
 
-      # Column 4: Status
-      status_text = ""
-      if is_published:
-        status_text = "Published"
+      # Col 3: Date Time
+      dt_item = QTableWidgetItem(dt_str)
+      dt_item.setFlags(dt_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+      dt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+      table.setItem(row_idx, 3, dt_item)
 
-      if is_scheduled:
-        status_text = "Scheduled"
-        if schedule_status and schedule_status['passed'] is True:
-          status_text = "Published"
-
-          # Mark this entry for migration to publishes
-          for upload in data_uploads:
-            if upload.get("file") == video.filename and upload.get("status") == "success" and schedule_status["passed"]:
-              to_publish.append(upload)
-              break
-
-      status_item = QTableWidgetItem(status_text)
+      # Col 4: Status (item for data access + cell widget for badge)
+      status_item = QTableWidgetItem(status)
       status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-      table.setItem(row, 4, status_item)
+      status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+      table.setItem(row_idx, 4, status_item)
+      table.setCellWidget(row_idx, 4, self._create_status_badge(status))
 
     selected_count = min(limit, available_idx)
-    self._window.video_selected_label.setText(f"Selected: {selected_count}")
+    w.video_selected_label.setText(f"Selected: {selected_count}")
 
-    # Migrate past-due entries: schedules → publishes
-    if to_publish and username:
-      self._migrate_to_published(username, to_publish)
+  @staticmethod
+  def _create_status_badge(status: str) -> QWidget:
+    """Return a centred, colour-coded badge widget for the status column."""
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(4, 2, 4, 2)
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    label = QLabel(status)
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    if status == "Scheduled":
+      label.setStyleSheet(
+        "background-color: #B8860B; color: #FFFFFF; "
+        "border-radius: 6px; padding: 2px 10px; "
+        "font-size: 11px; font-weight: 600;"
+      )
+    elif status == "Published":
+      label.setStyleSheet(
+        "background-color: #1B5E20; color: #FFFFFF; "
+        "border-radius: 6px; padding: 2px 10px; "
+        "font-size: 11px; font-weight: 600;"
+      )
+    elif status == "Failed":
+      label.setStyleSheet(
+        "background-color: #B71C1C; color: #FFFFFF; "
+        "border-radius: 6px; padding: 2px 10px; "
+        "font-size: 11px; font-weight: 600;"
+      )
+    else:  # Ready
+      label.setStyleSheet(
+        "background-color: #FFFFFF; color: #000000; "
+        "border-radius: 6px; padding: 2px 10px; "
+        "font-size: 11px; font-weight: 600;"
+      )
+
+    layout.addWidget(label)
+    return container
+
+  def _on_filter_changed(self) -> None:
+    """Re-populate table when filter checkboxes change."""
+    if self._videos:
+      self._refresh_video_table()
+
+  def _on_header_clicked(self, logical_index: int) -> None:
+    """Handle column header click for sorting."""
+    if logical_index not in (1, 2, 3):
+      return  # Only sort Filename, Size, Date Time columns
+    if self._sort_column == logical_index:
+      self._sort_ascending = not self._sort_ascending
+    else:
+      self._sort_column = logical_index
+      self._sort_ascending = True
+    if self._videos:
+      self._refresh_video_table()
 
   # ================================================================
   # LOG CALLBACK
@@ -1021,8 +1223,8 @@ class GUIController:
     #   default = "Cre: <videoid>"  (filename without _X64 suffix etc.)
     #   + user custom caption on next line (if provided)
     #   + hashtags appended
-    user_caption = w.caption_input.text().strip()
-    hashtags_raw = w.hashtags_input.text().strip()
+    user_caption = w.caption_input.toPlainText().strip()
+    hashtags_raw = w.hashtags_input.toPlainText().strip()
     captions = [
       self._build_caption(v.path, user_caption, hashtags_raw)
       for v in selected_videos
@@ -1102,13 +1304,16 @@ class GUIController:
     for row in range(table.rowCount()):
       # Skip already-scheduled or published rows
       status_item = table.item(row, 4)
-      if status_item and status_item.text() in ("Scheduled", "Published"):
+      if status_item and status_item.text() in (
+        "Scheduled", "Published", "Failed",
+      ):
         continue
 
       item = table.item(row, 0)
       if item and item.checkState() == Qt.CheckState.Checked:
-        if row < len(self._videos):
-          selected.append(self._videos[row])
+        video = self._row_video_map.get(row)
+        if video:
+          selected.append(video)
     return selected
 
   def _update_table_schedule(self) -> None:
@@ -1123,6 +1328,7 @@ class GUIController:
             time_str = DateTimeUtils.format_for_display(task.schedule_time)
           time_item = QTableWidgetItem(time_str)
           time_item.setFlags(time_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+          time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
           table.setItem(row, 3, time_item)
           break
 
@@ -1179,10 +1385,10 @@ class GUIController:
     if self._worker:
       self._worker.toggle_pause()
       if self._worker.is_paused:
-        self._window.pause_btn.setText("Resume")
+        self._window.pause_btn.setText(" Resume")
         self._logger.info("Upload paused")
       else:
-        self._window.pause_btn.setText("Pause")
+        self._window.pause_btn.setText(" Pause")
         self._logger.info("Upload resumed")
 
   def _on_progress_update(
@@ -1217,7 +1423,11 @@ class GUIController:
         status_item.setFlags(
           status_item.flags() & ~Qt.ItemFlag.ItemIsEditable
         )
+        status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         table.setItem(row, 4, status_item)
+        table.setCellWidget(
+          row, 4, self._create_status_badge(status_text)
+        )
 
         if success:
           # Disable checkbox so it can't be re-selected
@@ -1234,7 +1444,7 @@ class GUIController:
   def _on_finished(self) -> None:
     """Handle worker completion."""
     self._window.set_upload_running(False)
-    self._window.pause_btn.setText("Pause")
+    self._window.pause_btn.setText(" Pause")
     self._logger.success("All uploads finished")
 
   def _on_worker_error(self, error: str) -> None:
