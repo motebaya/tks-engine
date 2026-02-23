@@ -978,6 +978,8 @@ class GUIController:
       self, "_published_entries", {}
     )
 
+    total_scheduled = 0
+    total_published = 0
     # Build row data: (video, status, dt_display, sort_ts, size_bytes)
     rows: list[tuple] = []
     for video in self._videos:
@@ -1000,6 +1002,7 @@ class GUIController:
         dt_str = sched["date"] if sched else ""
         sort_ts = sched.get("timestamp", 0) if sched else 0
         status = "Scheduled"
+        total_scheduled += 1
       elif is_published:
         status = "Published"
         sort_ts = 0.0
@@ -1012,6 +1015,7 @@ class GUIController:
             dt_str = pub_date_iso
         else:
           dt_str = ""
+        total_published += 1
       else:
         status = "Ready"
         dt_str = ""
@@ -1024,6 +1028,9 @@ class GUIController:
         continue
 
       rows.append((video, status, dt_str, sort_ts, video.size_bytes))
+    
+    w.filter_scheduled_check.setText(f"[{total_scheduled}] Scheduled")
+    w.filter_published_check.setText(f"[{total_published}] Published")
 
     # Apply column sorting
     if self._sort_column is not None:
